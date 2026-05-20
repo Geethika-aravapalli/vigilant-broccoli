@@ -165,6 +165,10 @@ if ($services -contains "RemoveMember" -and $RemoveMembers) {
 
 Disconnect-ExchangeOnline -Confirm:$false
 
+<<<<<<< HEAD
 $logg
 $loggstr = $logg -join "`r`n"
 #converted string!!!
+=======
+$logg
+>>>>>>> parent of d79bdce (converting logg array to string at the end)
