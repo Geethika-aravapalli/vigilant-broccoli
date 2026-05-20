@@ -31,8 +31,8 @@ $NewOwner       = "Roopali.Kanni@qagarrettmotion.com"
 $AddMembers     = "Manju.MohanKumar@qagarrettmotion.com"
 $RemoveMembers  = "Roopali.Kanni@qagarrettmotion.com"
 
-$svc_account = "com"
-$Pass        = "dq"
+$svc_account = "<ACC-NAME>"
+$Pass        = "<PASSWORD>"
 
 ############################################################
 # PREP
