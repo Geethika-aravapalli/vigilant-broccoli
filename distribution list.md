@@ -166,3 +166,4 @@ if ($services -contains "RemoveMember" -and $RemoveMembers) {
 Disconnect-ExchangeOnline -Confirm:$false
 
 $logg
+$loggstr = $logg -join "`r`n"
