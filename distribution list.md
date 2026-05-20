@@ -167,3 +167,4 @@ Disconnect-ExchangeOnline -Confirm:$false
 
 $logg
 $loggstr = $logg -join "`r`n"
+#converted string!!
