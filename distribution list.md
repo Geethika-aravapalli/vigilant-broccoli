@@ -31,8 +31,8 @@ $NewOwner       = "Roopali.Kanni@qagarrettmotion.com"
 $AddMembers     = "Manju.MohanKumar@qagarrettmotion.com"
 $RemoveMembers  = "Roopali.Kanni@qagarrettmotion.com"
 
-$svc_account = "<ACC-NAME>"
-$Pass        = "<PASSWORD>"
+$svc_account = "com"
+$Pass        = "dq"
 
 ############################################################
 # PREP
@@ -162,13 +162,8 @@ if ($services -contains "RemoveMember" -and $RemoveMembers) {
 ############################################################
 # DISCONNECT
 ############################################################
-
 Disconnect-ExchangeOnline -Confirm:$false
 
-<<<<<<< HEAD
 $logg
 $loggstr = $logg -join "`r`n"
 #converted string!!!
-=======
-$logg
->>>>>>> parent of d79bdce (converting logg array to string at the end)
