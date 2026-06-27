@@ -1,0 +1,425 @@
+# ==========================================
+# AWS Authentication
+# ==========================================
+
+$Region      = "eu-west-1"
+$AKey        = 'xxxxxxxxxxxxxx'
+$ASecret     = 'xxxxxxxxxxxxx'
+$AccountName = "ams-non-prod"
+
+Set-AWSCredential -AccessKey $AKey -SecretKey $ASecret -StoreAs $AccountName
+Initialize-AWSDefaultConfiguration -ProfileName $AccountName -Region $Region
+
+# ==========================================
+# Configuration
+# ==========================================
+
+# Input CSV
+# CSV Columns:
+# InstanceId,AWSProfile,Region
+
+$csvPath = "T:\Scripts\Geeth\ec2instances.csv"
+
+# Output Files
+
+$timestamp = Get-Date -Format "yyyyMMdd_HHmmss"
+
+$outputFile = "T:\Scripts\Geeth\EC2_Stop_Result_$timestamp.csv"
+
+$failedCsv  = "T:\Scripts\Geeth\EC2_Stop_Failed_$timestamp.csv"
+
+$logFile    = "T:\Scripts\Geeth\EC2_Stop_Log_$timestamp.txt"
+
+# Logging Array
+
+$logg = @()
+
+# Result Arrays
+
+$results = @()
+
+$failedInstances = @()
+
+# ==========================================
+# Import Module
+# ==========================================
+
+Import-Module AWSPowerShell -ErrorAction Stop
+
+# ==========================================
+# Read CSV
+# ==========================================
+
+try {
+
+    $instances = Import-Csv $csvPath -ErrorAction Stop
+
+    $logg += "Successfully loaded input file: $csvPath"
+
+    $logg += "Total instances found: $($instances.Count)"
+
+}
+catch {
+
+    $logg += "Failed to load CSV file: $csvPath"
+
+    $logg += $_.Exception.Message
+
+    throw
+
+}
+
+# ==========================================
+# Process EC2 Instances
+# ==========================================
+
+foreach ($item in $instances) {
+
+    $instanceId = $item.InstanceId.Trim()
+
+    $profile    = $item.AWSProfile.Trim()
+
+    $region     = $item.Region.Trim()
+
+    $logg += ""
+
+    $logg += "=================================================="
+
+    $logg += "Processing Instance : $instanceId"
+
+    $logg += "AWS Profile         : $profile"
+
+    $logg += "Region              : $region"
+
+    $logg += "Start Time          : $(Get-Date)"
+
+    try {
+
+        # ==========================================
+        # Get Current Instance State
+        # ==========================================
+
+        $SelectParams = @{
+            Property = @(
+                "InstanceID",
+                "InstanceType",
+                "Platform",
+                "PrivateIpAddress",
+                @{Name="Name";Expression={$_.Tags[$_.Tags.Key.IndexOf("Name")].Value}},
+                @{Name="State";Expression={$_.State.Name}}
+            )
+        }
+
+        $ec2 = Get-EC2Instance `
+            -InstanceIds $instanceId `
+            -ProfileName $profile `
+            -Region $region `
+            -ErrorAction Stop
+
+        $instance = $ec2.Instances | Select-Object @SelectParams
+
+        if (-not $instance) {
+
+            throw "Instance not found."
+
+        }
+
+        $currentStatus = $instance.State
+
+        $logg += "Current Status      : $currentStatus"
+
+        # ==========================================
+        # Check Current State
+        # ==========================================
+
+        if ($currentStatus -eq "stopped") {
+
+            $message = "Already Powered OFF"
+
+            $logg += "$instanceId is already STOPPED"
+
+            $results += [PSCustomObject]@{
+
+                Timestamp     = Get-Date
+
+                InstanceId    = $instanceId
+
+                AWSProfile    = $profile
+
+                Region        = $region
+
+                CurrentStatus = $currentStatus
+
+                Action        = "STOP"
+
+                Result        = $message
+
+            }
+
+            $logg += "Completed Successfully"
+
+            continue
+
+        }
+
+        if ($currentStatus -eq "stopping") {
+
+            $message = "Already Stopping"
+
+            $logg += "$instanceId is already in STOPPING state"
+
+            $results += [PSCustomObject]@{
+
+                Timestamp     = Get-Date
+
+                InstanceId    = $instanceId
+
+                AWSProfile    = $profile
+
+                Region        = $region
+
+                CurrentStatus = $currentStatus
+
+                Action        = "STOP"
+
+                Result        = $message
+
+            }
+
+            $logg += "Completed Successfully"
+
+            continue
+
+        }
+
+        # ==========================================
+        # Stop Instance
+        # ==========================================
+
+        Stop-EC2Instance `
+            -InstanceId $instanceId `
+            -ProfileName $profile `
+            -Region $region `
+            -Force:$false `
+            -ErrorAction Stop | Out-Null
+
+        $logg += "Stop command submitted successfully."
+
+        # ==========================================
+        # Verify State Change
+        # ==========================================
+
+        Start-Sleep -Seconds 15
+
+        $verify = Get-EC2Instance `
+            -InstanceIds $instanceId `
+            -ProfileName $profile `
+            -Region $region `
+            -ErrorAction Stop
+
+        $newState = $verify.Instances[0].State.Name
+
+        $logg += "Status After Stop Attempt : $newState"
+
+        if ($newState -in @("stopped","stopping")) {
+
+            $message = "Stop Successful"
+
+            $results += [PSCustomObject]@{
+
+                Timestamp     = Get-Date
+
+                InstanceId    = $instanceId
+
+                AWSProfile    = $profile
+
+                Region        = $region
+
+                CurrentStatus = $newState
+
+                Action        = "STOP"
+
+                Result        = $message
+
+            }
+
+            $logg += "Instance stop verified successfully."
+
+        }
+        else {
+
+            throw "Instance did not transition to STOPPED/STOPPING state. Current state: $newState"
+
+        }
+
+        $logg += "Completed Successfully"
+
+    }
+    catch {
+
+        $errorMessage = $_.Exception.Message
+
+        $logg += "ERROR : $errorMessage"
+
+        $results += [PSCustomObject]@{
+
+            Timestamp     = Get-Date
+
+            InstanceId    = $instanceId
+
+            AWSProfile    = $profile
+
+            Region        = $region
+
+            CurrentStatus = "FAILED"
+
+            Action        = "STOP"
+
+            Result        = $errorMessage
+
+        }
+
+        $failedInstances += [PSCustomObject]@{
+
+            Timestamp    = Get-Date
+
+            InstanceId   = $instanceId
+
+            AWSProfile   = $profile
+
+            Region       = $region
+
+            ErrorMessage = $errorMessage
+
+        }
+
+        $logg += "Moving to next instance..."
+
+        continue
+
+    }
+
+}
+
+# ==========================================
+# Export Main Results
+# ==========================================
+
+try {
+
+    $results |
+        Export-Csv -Path $outputFile -NoTypeInformation -Force
+
+    $logg += ""
+
+    $logg += "Main Results Report Generated:"
+
+    $logg += $outputFile
+
+}
+catch {
+
+    $logg += ""
+
+    $logg += "Failed to export main results CSV."
+
+    $logg += $_.Exception.Message
+
+}
+
+# ==========================================
+# Export Failed Instances
+# ==========================================
+
+try {
+
+    if ($failedInstances.Count -gt 0) {
+
+        $failedInstances |
+            Export-Csv -Path $failedCsv -NoTypeInformation -Force
+
+        $logg += ""
+
+        $logg += "Failed Instances Report Generated:"
+
+        $logg += $failedCsv
+
+        $logg += "Total Failed Instances: $($failedInstances.Count)"
+
+    }
+    else {
+
+        $logg += ""
+
+        $logg += "No failed instances found."
+
+    }
+
+}
+catch {
+
+    $logg += ""
+
+    $logg += "Failed to export failed instances CSV."
+
+    $logg += $_.Exception.Message
+
+}
+
+# ==========================================
+# Summary
+# ==========================================
+
+$totalInstances = $instances.Count
+
+$successCount = $results.Count - $failedInstances.Count
+
+$failureCount = $failedInstances.Count
+
+$logg += ""
+
+$logg += "=================================================="
+
+$logg += "Execution Summary"
+
+$logg += "=================================================="
+
+$logg += "Total Instances Processed : $totalInstances"
+
+$logg += "Successful                : $successCount"
+
+$logg += "Failed                    : $failureCount"
+
+$logg += "Execution Completed       : $(Get-Date)"
+
+# ==========================================
+# Export Log File
+# ==========================================
+
+$loggStr = $logg -join "`r`n"
+
+$loggStr | Out-File -FilePath $logFile -Force
+
+# ==========================================
+# Console Output
+# ==========================================
+
+Write-Host ""
+
+Write-Host "===================================" -ForegroundColor Cyan
+
+Write-Host "EC2 STOP OPERATION COMPLETED" -ForegroundColor Green
+
+Write-Host "===================================" -ForegroundColor Cyan
+
+Write-Host "Results CSV : $outputFile"
+
+Write-Host "Failed CSV  : $failedCsv"
+
+Write-Host "Log File    : $logFile"
+
+Write-Host "Success     : $successCount"
+
+Write-Host "Failed      : $failureCount"
+
+Write-Host "===================================" -ForegroundColor Cyan
