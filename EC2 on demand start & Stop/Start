@@ -1,4 +1,16 @@
 # ==========================================
+# AWS Authentication
+# ==========================================
+
+$Region      = "eu-west-1"
+$AKey        = 'xxxxxxxxxxxxxx'
+$ASecret     = 'xxxxxxxxxxxxx'
+$AccountName = "ams-non-prod"
+
+Set-AWSCredential -AccessKey $AKey -SecretKey $ASecret -StoreAs $AccountName
+Initialize-AWSDefaultConfiguration -ProfileName $AccountName -Region $Region
+
+# ==========================================
 # Configuration
 # ==========================================
 
